@@ -9,7 +9,7 @@ the [Go SDL2][2] wrapper. This has it's own set of requirements so follow the
 instructions on the [README][3].
 
 ## Usage
-```golang
+```bash
 $ go run *.go
 ```
 
