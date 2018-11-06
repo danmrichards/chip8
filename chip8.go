@@ -3,14 +3,13 @@ package main
 import (
 	"io"
 	"io/ioutil"
+	"log"
+	"time"
 )
-
-// opcode represents a Chip8 opcode which are 2 bytes long.
-type opcode uint16
 
 type chip8 struct {
 	// Stores the current opcode.
-	opc opcode
+	opc uint16
 
 	// Chip8 has 4K of memory. The first 512 bytes are reserved
 	// for the the interpreter, fonts etc. Programs are expected to start at
@@ -52,6 +51,15 @@ type chip8 struct {
 
 	// Chip 8 has a HEX based keypad (0x0-0xF).
 	key [16]byte
+
+	// Clock will run at 60Hz to keep the cycles at the correct speed.
+	clock *time.Ticker
+
+	// True if the screen should be drawn.
+	draw bool
+
+	// Each supported opcode has handler func.
+	handlers map[uint16]opcodeHandler
 }
 
 // reset initialises the Chip8 registers and memory.
@@ -72,14 +80,31 @@ func (c *chip8) reset() {
 
 	// Reset timers
 	c.delayTimer, c.soundTimer = 0, 0
+
+	c.clock = time.NewTicker(time.Second / 60)
+
+	c.registerHandlers()
 }
 
 // cycle emulates one clock cycle of the Chip8 CPU.
-func (c *chip8) cycle() {
-	// TODO: fetch opcode
-	// TODO: decode opcode
-	// TODO: execute opcode
-	// TODO: update timers
+func (c *chip8) cycle() error {
+	// Set the current opcode. The opcodes are two bytes long so we get two
+	// of them and merge together.
+	c.opc = uint16(c.memory[c.pc])<<8 | uint16(c.memory[c.pc+1])
+
+	// Handle the opcode.
+	if err := c.handle(); err != nil {
+		return err
+	}
+
+	// Use the ticker to slow down emulation cycles to a realistic speed.
+	select {
+	case <-c.clock.C:
+		c.updateTimers()
+	default:
+	}
+
+	return nil
 }
 
 // load loads the contents of rom into memory.
@@ -95,6 +120,21 @@ func (c *chip8) load(rom io.Reader) error {
 	}
 
 	return nil
+}
+
+// updateTimers updates the chip8 timers dispatching any additional events
+// based on the timer values.
+func (c *chip8) updateTimers() {
+	if c.delayTimer > 0 {
+		c.delayTimer--
+	}
+	if c.soundTimer > 0 {
+		if c.soundTimer == 1 {
+			// TODO: Actually beep!
+			log.Println("BEEP!")
+		}
+		c.soundTimer--
+	}
 }
 
 func newChip8() *chip8 {

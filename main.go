@@ -50,7 +50,11 @@ func main() {
 			break
 		default:
 		}
-		// TODO: Emulate a cycle.
+
+		// Emulate a cycle.
+		if err = c8.cycle(); err != nil {
+			log.Fatal(err)
+		}
 
 		// TODO: Update screen if the draw flag is set.
 
