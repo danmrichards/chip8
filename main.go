@@ -9,6 +9,8 @@ import (
 	"github.com/veandco/go-sdl2/sdl"
 )
 
+// TODO: Much better package structure.
+
 var (
 	sig  = make(chan os.Signal, 1)
 	loop = true
@@ -16,6 +18,8 @@ var (
 
 func main() {
 	log.SetFlags(log.LstdFlags)
+
+	// TODO: Flags for rom and debug mode.
 
 	// Handle sig for exit. TODO: Replace with SDL exit.
 	signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)

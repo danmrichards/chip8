@@ -9,6 +9,7 @@ type opcodeHandler func() error
 
 // registerHandlers registers up the map of opcode handlers
 func (c *chip8) registerHandlers() {
+	// TODO: names for opcodes.
 	c.handlers = map[uint16]opcodeHandler{
 		0x0000: c.handle0x0000,
 		0x1000: c.jump,
@@ -38,6 +39,8 @@ func (c *chip8) handle() error {
 			err: errors.New("unsupported opcode"),
 		}
 	}
+
+	// TODO: debug mode support. Log opcode and handler name.
 
 	return h()
 }

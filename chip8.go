@@ -60,6 +60,8 @@ type chip8 struct {
 
 	// Each supported opcode has handler func.
 	handlers map[uint16]opcodeHandler
+
+	// TODO: debug mode bool.
 }
 
 // reset initialises the Chip8 registers and memory.
