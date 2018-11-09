@@ -3,14 +3,9 @@ A [Chip8][1] emulator written in Go.
 
 Written as a learning exercise to get familiar with emulation, opcodes and CPUs.
 
-## Requirements
-The emulator uses SDL for it's graphics, input and sounds. Specifically it uses
-the [Go SDL2][2] wrapper. This has it's own set of requirements so follow the
-instructions on the [README][3].
-
 ## Usage
 ```bash
-$ go run *.go
+$ go run .
 ```
 
 ## References

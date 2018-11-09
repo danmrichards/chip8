@@ -123,11 +123,6 @@ func (c *chip8) handle0x0000() (uint16, error) {
 	}
 }
 
-// callSys calls RCA 1802 program at address NNN. Not necessary for most ROMs.
-func (c *chip8) callSys() (uint16, error) {
-	return c.opc & 0xF000, errors.New("TODO: callSys")
-}
-
 // clrDisp clears the display.
 func (c *chip8) clrDisp() (uint16, error) {
 	return c.opc & 0x00FF, errors.New("TODO: clrDisp")
@@ -141,6 +136,11 @@ func (c *chip8) subRet() (uint16, error) {
 	c.sp--
 
 	return c.opc & 0x00FF, nil
+}
+
+// callSys calls RCA 1802 program at address NNN. Not necessary for most ROMs.
+func (c *chip8) callSys() (uint16, error) {
+	return c.opc & 0xF000, errors.New("TODO: callSys")
 }
 
 // jump jumps to address NNN.
@@ -237,7 +237,7 @@ func (c *chip8) handle0x8000() (uint16, error) {
 		return c.decVxVy()
 
 	default:
-		return c.opc & 0xFFFF, errors.New("TODO: handle0xF000")
+		return c.opc & 0xFFFF, errors.New("TODO: handle0x8000")
 	}
 }
 
@@ -263,12 +263,12 @@ func (c *chip8) incVxVy() (uint16, error) {
 	x := (c.opc & 0x0F00) >> 8
 	y := (c.opc & 0x00F0) >> 4
 
-	c.V[x] += c.V[y]
-	if c.V[x] < c.V[y] {
+	if c.V[y] > (0xFF - c.V[x]) {
 		c.V[0xF] = 1
 	} else {
 		c.V[0xF] = 0
 	}
+	c.V[x] += c.V[y]
 
 	c.pc += 2
 
@@ -281,12 +281,12 @@ func (c *chip8) decVxVy() (uint16, error) {
 	x := (c.opc & 0x0F00) >> 8
 	y := (c.opc & 0x00F0) >> 4
 
-	c.V[x] -= c.V[y]
-	if c.V[x] >= c.V[y] {
-		c.V[0xF] = 1
-	} else {
+	if c.V[y] > c.V[x] {
 		c.V[0xF] = 0
+	} else {
+		c.V[0xF] = 1
 	}
+	c.V[x] -= c.V[y]
 
 	c.pc += 2
 
