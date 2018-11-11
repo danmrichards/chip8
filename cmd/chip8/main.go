@@ -66,11 +66,11 @@ func run() {
 
 	rom, err := os.Open(rom)
 	if err != nil {
-		log.Fatalln("Could not open rom:", err)
+		log.Fatalln("Could not open ROM:", err)
 	}
 
 	if err := vm.Load(rom); err != nil {
-		log.Fatal("Could not load rom:", err)
+		log.Fatal("Could not load ROM:", err)
 	}
 
 	go eventHandler()
@@ -110,19 +110,27 @@ func drawScreen() {
 	window.Clear(colornames.Black)
 
 	imd := imdraw.New(nil)
-	imd.Color = pixel.RGB(1, 1, 1)
+	imd.Color = pixel.RGB(0.14, 0.8, 0.26)
 
-	screenWidth := window.Bounds().W()
-	screenHeight := window.Bounds().H()
-	width, height := screenWidth/64, screenHeight/32
+	scrW := window.Bounds().W()
+	scrH := window.Bounds().H()
+
+	// Calculate the screen ratio.
+	rW, rH := scrW/64, scrH/32
 
 	for x := 0; x < 64; x++ {
 		for y := 0; y < 32; y++ {
-			if vm.PixelSet((31-y)*64 + x) {
-				imd.Push(pixel.V(width*float64(x), height*float64(y)))
-				imd.Push(pixel.V(width*float64(x)+width, height*float64(y)+height))
-				imd.Rectangle(0)
+			if !vm.PixelSet((31-y)*64 + x) {
+				continue
 			}
+
+			// Scale the pixel co-ords.
+			sX := rW * float64(x)
+			sY := rH * float64(y)
+
+			imd.Push(pixel.V(sX, sY))
+			imd.Push(pixel.V(sX+rW, sY+rH))
+			imd.Rectangle(0)
 		}
 	}
 
