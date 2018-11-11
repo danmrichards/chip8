@@ -1,4 +1,4 @@
-package main
+package chip8
 
 // fontset is the Chip8 font set. Each character is 4px wide and 5px high.
 var fontset = [80]byte{

@@ -1,13 +1,15 @@
-package main
+package chip8
 
 import (
 	"io"
 	"io/ioutil"
-	"log"
 	"time"
 )
 
-type chip8 struct {
+// VM is an implementation of the Chip8 virtual machine.
+type VM struct {
+	Debug bool
+
 	// Stores the current opcode.
 	opc uint16
 
@@ -22,10 +24,10 @@ type chip8 struct {
 
 	// CPU registers. The Chip 8 has 15 8-bit general purpose registers named
 	// V0,V1...VE. The 16th register (VF) is used  for the 'carry flag'.
-	V [16]byte
+	reg [16]byte
 
 	// Index register.
-	I uint16
+	idx uint16
 
 	// Program counter.
 	pc uint16
@@ -55,62 +57,49 @@ type chip8 struct {
 	// Clock will run at 60Hz to keep the cycles at the correct speed.
 	clock *time.Ticker
 
-	// True if the screen should be drawn.
-	draw bool
-
 	// Each supported opcode has handler func.
 	handlers map[uint16]opcodeHandler
 
-	// TODO: debug mode bool.
+	// Delivered to when the screen should be drawn.
+	drawChan chan struct{}
+
+	// Delivered to when a beep should be made.
+	beepChan chan struct{}
 }
 
-// reset initialises the Chip8 registers and memory.
-func (c *chip8) reset() {
-	c.opc = 0                // Reset current opcode.
-	c.memory = [4096]byte{}  // Clear memory
-	c.V = [16]byte{}         // Clear registers V0-VF
-	c.I = 0                  // Reset the index register.
-	c.pc = 0x200             // Program counter starts at 0x200.
-	c.sp = 0                 // Reset the stack pointer.
-	c.disp = [64 * 32]byte{} // Clear display
-	c.stack = [16]uint16{}   // Clear stack
-
-	// Load the font set into memory.
-	for i := 0; i < 80; i++ {
-		c.memory[i] = fontset[i]
+func New() *VM {
+	v := &VM{
+		drawChan: make(chan struct{}),
+		beepChan: make(chan struct{}),
 	}
+	v.reset()
 
-	// Reset timers
-	c.delayTimer, c.soundTimer = 0, 0
-
-	c.clock = time.NewTicker(time.Second / 60)
-
-	c.registerHandlers()
+	return v
 }
 
-// cycle emulates one clock cycle of the Chip8 CPU.
-func (c *chip8) cycle() error {
+// Cycle emulates one clock cycle of the Chip8 CPU.
+func (v *VM) Cycle() error {
 	// Set the current opcode. The opcodes are two bytes long so we get two
 	// of them and merge together.
-	c.opc = uint16(c.memory[c.pc])<<8 | uint16(c.memory[c.pc+1])
+	v.opc = uint16(v.memory[v.pc])<<8 | uint16(v.memory[v.pc+1])
 
 	// Handle the opcode.
-	if err := c.handle(); err != nil {
+	if err := v.handle(); err != nil {
 		return err
 	}
 
 	// Use the ticker to slow down emulation cycles to a realistic speed.
 	select {
-	case <-c.clock.C:
-		c.updateTimers()
+	case <-v.clock.C:
+		v.updateTimers()
 	default:
 	}
 
 	return nil
 }
 
-// load loads the contents of rom into memory.
-func (c *chip8) load(rom io.Reader) error {
+// Load loads the contents of rom into memory.
+func (v *VM) Load(rom io.Reader) error {
 	data, err := ioutil.ReadAll(rom)
 	if err != nil {
 		return err
@@ -118,30 +107,60 @@ func (c *chip8) load(rom io.Reader) error {
 
 	// Load byte into memory, offset by 512 bytes (0x200).
 	for i := 0; i < len(data); i++ {
-		c.memory[i+0x200] = data[i]
+		v.memory[i+0x200] = data[i]
 	}
 
 	return nil
 }
 
+func (v *VM) PixelSet(i int) bool {
+	return v.disp[i] == 1
+}
+
+// Draw returns a read-only channel indicating when the screen should be drawn.
+func (v *VM) Draw() <-chan struct{} {
+	return v.drawChan
+}
+
+// Beep returns a read-only channel indicating when a beep should happen.
+func (v *VM) Beep() <-chan struct{} {
+	return v.beepChan
+}
+
 // updateTimers updates the chip8 timers dispatching any additional events
 // based on the timer values.
-func (c *chip8) updateTimers() {
-	if c.delayTimer > 0 {
-		c.delayTimer--
+func (v *VM) updateTimers() {
+	if v.delayTimer > 0 {
+		v.delayTimer--
 	}
-	if c.soundTimer > 0 {
-		if c.soundTimer == 1 {
-			// TODO: Actually beep!
-			log.Println("BEEP!")
+	if v.soundTimer > 0 {
+		if v.soundTimer == 1 {
+			v.beepChan <- struct{}{}
 		}
-		c.soundTimer--
+		v.soundTimer--
 	}
 }
 
-func newChip8() *chip8 {
-	c := &chip8{}
-	c.reset()
+// reset initialises the Chip8 registers and memory.
+func (v *VM) reset() {
+	v.opc = 0                // Reset current opcode.
+	v.memory = [4096]byte{}  // Clear memory
+	v.reg = [16]byte{}       // Clear registers V0-VF
+	v.idx = 0                // Reset the index register.
+	v.pc = 0x200             // Program counter starts at 0x200.
+	v.sp = 0                 // Reset the stack pointer.
+	v.disp = [64 * 32]byte{} // Clear display
+	v.stack = [16]uint16{}   // Clear stack
 
-	return c
+	// Load the font set into memory.
+	for i := 0; i < 80; i++ {
+		v.memory[i] = fontset[i]
+	}
+
+	// Reset timers
+	v.delayTimer, v.soundTimer = 0, 0
+
+	v.clock = time.NewTicker(time.Second / 60)
+
+	v.registerHandlers()
 }

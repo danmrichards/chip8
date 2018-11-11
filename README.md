@@ -3,9 +3,18 @@ A [Chip8][1] emulator written in Go.
 
 Written as a learning exercise to get familiar with emulation, opcodes and CPUs.
 
+## Installation
+```bash
+$ go get -u github.com/danmrichards/chip8/cmd/chip8/...
+```
+
 ## Usage
 ```bash
-$ go run .
+Usage of chip8:
+  -debug
+    	Run the emulator in debug mode
+  -rom string
+    	Path to the ROM file to load
 ```
 
 ## References
