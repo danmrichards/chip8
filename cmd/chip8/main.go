@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"time"
 
 	"github.com/danmrichards/chip8/internal/chip8"
 	"github.com/danmrichards/chip8/internal/sound"
@@ -20,6 +21,10 @@ var (
 
 	rom   string
 	debug bool
+)
+
+const (
+	cycleRate = 300
 )
 
 func main() {
@@ -47,6 +52,9 @@ func main() {
 }
 
 func run() {
+	tick := time.NewTicker(time.Second / cycleRate)
+	defer tick.Stop()
+
 	cfg := pixelgl.WindowConfig{
 		Title:  "chip8",
 		Bounds: pixel.R(0, 0, 1024, 768),
@@ -87,6 +95,10 @@ func run() {
 		if err = vm.Cycle(); err != nil {
 			log.Fatal(err)
 		}
+
+		// A bit dirty, but block the next cycle until a tick. This prevents
+		// the emulator from running too quickly.
+		<-tick.C
 
 		// TODO: Store the key press state.
 	}
