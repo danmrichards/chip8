@@ -23,9 +23,7 @@ var (
 	debug bool
 )
 
-const (
-	cycleRate = 300
-)
+const cycleRate = 300
 
 func main() {
 	log.SetFlags(log.LstdFlags)

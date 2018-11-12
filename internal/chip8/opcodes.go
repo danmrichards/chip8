@@ -66,7 +66,7 @@ func (v *VM) registerHandlers() {
 		},
 		0xD000: {
 			opcode:  "DXYN",
-			handler: v.drawDisp,
+			handler: v.draw,
 		},
 		0xE000: {
 			opcode:  "handle0xE000",
@@ -172,7 +172,7 @@ func (v *VM) skipVxNN() (uint16, error) {
 
 	// Skip the next instruction by increasing the program counter by 4
 	// instead of the usual 2.
-	if v.reg[x] == nn {
+	if v.v[x] == nn {
 		v.pc += 4
 	} else {
 		v.pc += 2
@@ -189,7 +189,7 @@ func (v *VM) skipVxNotNN() (uint16, error) {
 
 	// Skip the next instruction by increasing the program counter by 4
 	// instead of the usual 2.
-	if v.reg[x] != nn {
+	if v.v[x] != nn {
 		v.pc += 4
 	} else {
 		v.pc += 2
@@ -203,7 +203,7 @@ func (v *VM) setVx() (uint16, error) {
 	x := (v.opc & 0x0F00) >> 8 // Reverse the shift.
 	nn := byte(v.opc & 0x00FF) // Get the last 2 chars.
 
-	v.reg[x] = nn
+	v.v[x] = nn
 	v.pc += 2
 
 	return v.opc, nil
@@ -214,7 +214,7 @@ func (v *VM) incVx() (uint16, error) {
 	x := (v.opc & 0x0F00) >> 8 // Reverse the shift.
 	nn := byte(v.opc & 0x00FF) // Get the last 2 chars.
 
-	v.reg[x] += nn
+	v.v[x] += nn
 	v.pc += 2
 
 	return v.opc, nil
@@ -243,7 +243,7 @@ func (v *VM) handle0x8000() (uint16, error) {
 
 // setVxVy sets VX to the value of VY.
 func (v *VM) setVxVy() (uint16, error) {
-	v.reg[(v.opc&0x0F00)>>8] = v.reg[(v.opc&0x00F0)>>4]
+	v.v[(v.opc&0x0F00)>>8] = v.v[(v.opc&0x00F0)>>4]
 	v.pc += 2
 
 	return v.opc & 0xFFFF, nil
@@ -251,7 +251,7 @@ func (v *VM) setVxVy() (uint16, error) {
 
 // setVxAndVy sets VX to VX & VY (bitwise AND operation).
 func (v *VM) setVxAndVy() (uint16, error) {
-	v.reg[(v.opc&0x0F00)>>8] &= v.reg[(v.opc&0x00F0)>>4]
+	v.v[(v.opc&0x0F00)>>8] &= v.v[(v.opc&0x00F0)>>4]
 	v.pc += 2
 
 	return v.opc & 0xFFFF, nil
@@ -263,12 +263,12 @@ func (v *VM) incVxVy() (uint16, error) {
 	x := (v.opc & 0x0F00) >> 8
 	y := (v.opc & 0x00F0) >> 4
 
-	if v.reg[y] > (0xFF - v.reg[x]) {
-		v.reg[0xF] = 1
+	if v.v[y] > (0xFF - v.v[x]) {
+		v.v[0xF] = 1
 	} else {
-		v.reg[0xF] = 0
+		v.v[0xF] = 0
 	}
-	v.reg[x] += v.reg[y]
+	v.v[x] += v.v[y]
 
 	v.pc += 2
 
@@ -281,12 +281,12 @@ func (v *VM) decVxVy() (uint16, error) {
 	x := (v.opc & 0x0F00) >> 8
 	y := (v.opc & 0x00F0) >> 4
 
-	if v.reg[y] > v.reg[x] {
-		v.reg[0xF] = 0
+	if v.v[y] > v.v[x] {
+		v.v[0xF] = 0
 	} else {
-		v.reg[0xF] = 1
+		v.v[0xF] = 1
 	}
-	v.reg[x] -= v.reg[y]
+	v.v[x] -= v.v[y]
 
 	v.pc += 2
 
@@ -301,7 +301,7 @@ func (v *VM) skipVxNotVy() (uint16, error) {
 
 	// Skip the next instruction by increasing the program counter by 4
 	// instead of the usual 2.
-	if v.reg[x] != v.reg[y] {
+	if v.v[x] != v.v[y] {
 		v.pc += 4
 	} else {
 		v.pc += 2
@@ -312,7 +312,7 @@ func (v *VM) skipVxNotVy() (uint16, error) {
 
 // setAddress sets the index register to the address NNN.
 func (v *VM) setAddress() (uint16, error) {
-	v.idx = v.opc & 0x0FFF
+	v.i = v.opc & 0x0FFF
 	v.pc += 2 // Increase by 2 because each instruction is 2 bytes long.
 
 	return v.opc, nil
@@ -324,37 +324,42 @@ func (v *VM) setVxRand() (uint16, error) {
 	x := (v.opc & 0x0F00) >> 8 // Reverse the shift.
 	nn := byte(v.opc & 0x00FF) // Get the last 2 chars.
 
-	v.reg[x] = byte(rand.Intn(256)) & nn
+	v.v[x] = byte(rand.Intn(256)) & nn
 	v.pc += 2
 
 	return v.opc, nil
 }
 
-// drawDisp draws a sprite at coordinate (VX, VY) that has a width of 8 pixels
+// draw draws a sprite at coordinate (VX, VY) that has a width of 8 pixels
 // and a height of N pixels. Each row of 8 pixels is read as bit-coded starting
-// from memory location I; I doesn't change after the execution of this
+// from memory location i; i doesn't change after the execution of this
 // instruction. VF is set to 1 if any screen pixels are flipped from set to
 // unset when the sprite is drawn, and to 0 if that doesn't happen.
-func (v *VM) drawDisp() (uint16, error) {
-	x := uint16(v.reg[(v.opc&0x0F00)>>8])
-	y := uint16(v.reg[(v.opc&0x00F0)>>4])
-	height := v.opc & 0x000F
-	var pixel uint16
+func (v *VM) draw() (uint16, error) {
+	var (
+		pixel  uint16
+		x      = uint16(v.v[(v.opc&0x0F00)>>8])
+		y      = uint16(v.v[(v.opc&0x00F0)>>4])
+		height = v.opc & 0x000F
+	)
+	v.v[0xF] = 0
 
-	v.reg[0xF] = 0
 	for cY := uint16(0); cY < height; cY++ {
-		pixel = uint16(v.memory[v.idx+cY])
+		pixel = uint16(v.mem[v.i+cY])
 		for cX := uint16(0); cX < 8; cX++ {
 			index := x + cX + ((y + cY) * 64)
-			if index > uint16(len(v.disp)) {
+			if pixel&(0x80>>cX) == 0 {
 				continue
 			}
-			if (pixel & (0x80 >> cX)) != 0 {
-				if v.disp[index] == 1 {
-					v.reg[0xF] = 1
-				}
-				v.disp[index] ^= 1
+
+			// If the pixel was already 'lit', set the VF register to 1.
+			// This indicates a collision.
+			if v.disp[index] == 1 {
+				v.v[0xF] = 1
 			}
+
+			// Bitwise XOR to 'flip' the pixel.
+			v.disp[index] ^= 1
 		}
 	}
 
@@ -382,7 +387,7 @@ func (v *VM) skipVxKeyNotPressed() (uint16, error) {
 
 	// Skip the next instruction by increasing the program counter by 4
 	// instead of the usual 2.
-	if v.key[v.reg[x]] == 0 {
+	if v.key[v.v[x]] == 0 {
 		v.pc += 4
 	} else {
 		v.pc += 2
@@ -420,7 +425,7 @@ func (v *VM) handle0xF000() (uint16, error) {
 
 // getDelayTimer the delay timer to VX.
 func (v *VM) getDelayTimer() (uint16, error) {
-	v.reg[(v.opc&0x0F00)>>8] = v.delayTimer
+	v.v[(v.opc&0x0F00)>>8] = v.delayTimer
 	v.pc += 2
 
 	return v.opc & 0xFFFF, nil
@@ -428,7 +433,7 @@ func (v *VM) getDelayTimer() (uint16, error) {
 
 // setDelayTimer sets the delay timer to VX.
 func (v *VM) setDelayTimer() (uint16, error) {
-	v.delayTimer = v.reg[(v.opc&0x0F00)>>8]
+	v.delayTimer = v.v[(v.opc&0x0F00)>>8]
 	v.pc += 2
 
 	return v.opc & 0xFFFF, nil
@@ -436,43 +441,43 @@ func (v *VM) setDelayTimer() (uint16, error) {
 
 // setDelayTimer sets the sound timer to VX.
 func (v *VM) setSoundTimer() (uint16, error) {
-	v.soundTimer = v.reg[(v.opc&0x0F00)>>8]
+	v.soundTimer = v.v[(v.opc&0x0F00)>>8]
 	v.pc += 2
 
 	return v.opc & 0xFFFF, nil
 }
 
-// loadFont sets I to the location of the sprite for the character in VX.
+// loadFont sets i to the location of the sprite for the character in VX.
 // Characters 0-F (in hexadecimal) are represented by a 4x5 font.
 func (v *VM) loadFont() (uint16, error) {
-	v.idx = uint16(v.reg[(v.opc&0x0F00)>>8]) * 5
+	v.i = uint16(v.v[(v.opc&0x0F00)>>8]) * 5
 	v.pc += 2
 
 	return v.opc & 0xFFFF, nil
 }
 
 // setBCD stores the binary code decimal representation of VX with the most
-// significant of three digits at the address in I, the middle digit at I plus
-// 1, and the least significant digit at I plus 2. (In other words, take the
-// decimal representation of VX, place the hundreds digit in memory at location
-// in I, the tens digit at location I+1, and the ones digit at location I+2).1
+// significant of three digits at the address in i, the middle digit at i plus
+// 1, and the least significant digit at i plus 2. (in other words, take the
+// decimal representation of VX, place the hundreds digit in mem at location
+// in i, the tens digit at location i+1, and the ones digit at location i+2).1
 func (v *VM) setBCD() (uint16, error) {
 	x := (v.opc & 0x0F00) >> 8
 
-	v.memory[v.idx] = v.reg[x] / 100          // Hundreds.
-	v.memory[v.idx+1] = (v.reg[x] / 10) % 10  // Tens.
-	v.memory[v.idx+2] = (v.reg[x] % 100) % 10 // Ones.
+	v.mem[v.i] = v.v[x] / 100          // Hundreds.
+	v.mem[v.i+1] = (v.v[x] / 10) % 10  // Tens.
+	v.mem[v.i+2] = (v.v[x] % 100) % 10 // Ones.
 	v.pc += 2
 
 	return v.opc & 0xFFFF, nil
 }
 
-// fillV0Vx stores V0 to VX (including VX) in memory starting at address I. The
-// offset from I is increased by 1 for each value written, but I itself is left
+// fillV0Vx stores V0 to VX (including VX) in mem starting at address i. The
+// offset from i is increased by 1 for each value written, but i itself is left
 // unmodified.
 func (v *VM) regLoad() (uint16, error) {
 	for i := uint16(0); i <= (v.opc&0x0F00)>>8; i++ {
-		v.reg[i] = v.memory[v.idx+i]
+		v.v[i] = v.mem[v.i+i]
 	}
 	v.pc += 2
 

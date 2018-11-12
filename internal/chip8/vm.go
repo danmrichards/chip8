@@ -13,21 +13,21 @@ type VM struct {
 	// Stores the current opcode.
 	opc uint16
 
-	// Chip8 has 4K of memory. The first 512 bytes are reserved
+	// Chip8 has 4K of mem. The first 512 bytes are reserved
 	// for the the interpreter, fonts etc. Programs are expected to start at
 	// 0x200. See map:
 	//
 	// 0x000 -> 0x1FF - Chip 8 interpreter (contains font set in emu)
 	// 0x050 -> 0x0A0 - Used for the built in 4x5 pixel font set (0-F)
 	// 0x200 -> 0xFFF - Program ROM and work RAM
-	memory [4096]byte
+	mem [4096]byte
 
 	// CPU registers. The Chip 8 has 15 8-bit general purpose registers named
 	// V0,V1...VE. The 16th register (VF) is used  for the 'carry flag'.
-	reg [16]byte
+	v [16]byte
 
 	// Index register.
-	idx uint16
+	i uint16
 
 	// Program counter.
 	pc uint16
@@ -81,7 +81,7 @@ func New() *VM {
 func (v *VM) Cycle() error {
 	// Set the current opcode. The opcodes are two bytes long so we get two
 	// of them and merge together.
-	v.opc = uint16(v.memory[v.pc])<<8 | uint16(v.memory[v.pc+1])
+	v.opc = uint16(v.mem[v.pc])<<8 | uint16(v.mem[v.pc+1])
 
 	// Handle the opcode.
 	if err := v.handle(); err != nil {
@@ -98,21 +98,22 @@ func (v *VM) Cycle() error {
 	return nil
 }
 
-// Load loads the contents of rom into memory.
+// Load loads the contents of rom into mem.
 func (v *VM) Load(rom io.Reader) error {
 	data, err := ioutil.ReadAll(rom)
 	if err != nil {
 		return err
 	}
 
-	// Load byte into memory, offset by 512 bytes (0x200).
+	// Load byte into mem, offset by 512 bytes (0x200).
 	for i := 0; i < len(data); i++ {
-		v.memory[i+0x200] = data[i]
+		v.mem[i+0x200] = data[i]
 	}
 
 	return nil
 }
 
+// PixelSet returns true if the pixel at i is set.
 func (v *VM) PixelSet(i int) bool {
 	return v.disp[i] == 1
 }
@@ -141,20 +142,20 @@ func (v *VM) updateTimers() {
 	}
 }
 
-// reset initialises the Chip8 registers and memory.
+// reset initialises the Chip8 registers and mem.
 func (v *VM) reset() {
 	v.opc = 0                // Reset current opcode.
-	v.memory = [4096]byte{}  // Clear memory
-	v.reg = [16]byte{}       // Clear registers V0-VF
-	v.idx = 0                // Reset the index register.
+	v.mem = [4096]byte{}     // Clear mem
+	v.v = [16]byte{}         // Clear registers V0-VF
+	v.i = 0                  // Reset the index register.
 	v.pc = 0x200             // Program counter starts at 0x200.
 	v.sp = 0                 // Reset the stack pointer.
 	v.disp = [64 * 32]byte{} // Clear display
 	v.stack = [16]uint16{}   // Clear stack
 
-	// Load the font set into memory.
+	// Load the font set into mem.
 	for i := 0; i < 80; i++ {
-		v.memory[i] = fontset[i]
+		v.mem[i] = fontset[i]
 	}
 
 	// Reset timers
