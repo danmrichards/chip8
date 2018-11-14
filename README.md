@@ -30,6 +30,22 @@ Usage of chip8:
     	Path to the ROM file to load
 ```
 
+## Controls
+The Chip8 has a 16 key hex keyboard. For the purposes of this emulator it has
+been implemented like so:
+```
++---+---+---+---+
+| 1 | 2 | 3 | 4 |
++---+---+---+---+
+| Q | W | E | R |
++---+---+---+---+
+| A | S | D | F |
++---+---+---+---+
+| Z | X | C | V |
++---+---+---+---+
+```
+> Note: Which of these keys are actually used will differ from ROM to ROM.
+
 ## References
 As this was a learning exercise I had to seek a lot of help from the interwebs:
 * [https://medium.com/average-coder/exploring-emulation-in-go-chip-8-636f99683f2a][3]

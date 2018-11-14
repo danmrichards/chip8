@@ -52,7 +52,7 @@ type VM struct {
 	sp uint16
 
 	// Chip 8 has a HEX based keypad (0x0-0xF).
-	key [16]byte
+	keys [16]byte
 
 	// Clock will run at 60Hz to keep the cycles at the correct speed.
 	clock *time.Ticker
@@ -126,6 +126,11 @@ func (v *VM) Draw() <-chan struct{} {
 // Beep returns a read-only channel indicating when a beep should happen.
 func (v *VM) Beep() <-chan struct{} {
 	return v.beepChan
+}
+
+// KeyDown marks key as pressed.
+func (v *VM) KeyDown(key uint16) {
+	v.keys[key] = 1
 }
 
 // updateTimers updates the chip8 timers dispatching any additional events

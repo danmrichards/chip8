@@ -40,6 +40,10 @@ func (v *VM) registerHandlers() {
 			opcode:  "4XNN",
 			handler: v.skipVxNotNN,
 		},
+		0x5000: {
+			opcode:  "5XY0",
+			handler: v.skipVxVy,
+		},
 		0x6000: {
 			opcode:  "6XNN",
 			handler: v.setVx,
@@ -60,6 +64,7 @@ func (v *VM) registerHandlers() {
 			opcode:  "ANNN",
 			handler: v.setAddress,
 		},
+		// TODO: BNNN
 		0xC000: {
 			opcode:  "CXNN",
 			handler: v.setVxRand,
@@ -125,7 +130,10 @@ func (v *VM) handle0x0000() (uint16, error) {
 
 // clrDisp clears the display.
 func (v *VM) clrDisp() (uint16, error) {
-	return v.opc & 0x00FF, errors.New("TODO: clrDisp")
+	v.disp = [64 * 32]byte{}
+	v.pc += 2
+
+	return v.opc & 0x00FF, nil
 }
 
 // subRet returns from a subroutine.
@@ -139,8 +147,10 @@ func (v *VM) subRet() (uint16, error) {
 }
 
 // callSys calls RCA 1802 program at address NNN. Not necessary for most ROMs.
+// Only used on the original computers on which chip8 was implemented. Leaving
+// a noop here just for reference.
 func (v *VM) callSys() (uint16, error) {
-	return v.opc & 0xF000, errors.New("TODO: callSys")
+	return v.opc & 0xF000, nil
 }
 
 // jump jumps to address NNN.
@@ -198,6 +208,18 @@ func (v *VM) skipVxNotNN() (uint16, error) {
 	return v.opc, nil
 }
 
+// skipVxVy skips the next instruction if VX equals VY. Usually the next
+// instruction is a jump to skip a code block.
+func (v *VM) skipVxVy() (uint16, error) {
+	if v.v[(v.opc&0x0F00)>>8] == v.v[(v.opc&0x00F0)>>4] {
+		v.pc += 4
+	} else {
+		v.pc += 2
+	}
+
+	return v.opc, nil
+}
+
 // setVx sets CPU register Vx (where x is A-E) to NN.
 func (v *VM) setVx() (uint16, error) {
 	x := (v.opc & 0x0F00) >> 8 // Reverse the shift.
@@ -223,18 +245,36 @@ func (v *VM) incVx() (uint16, error) {
 // handle0x8000 performs additional opcode parsing to determine the correct
 // action. Codes in this range cannot rely on the first 4 bits.
 func (v *VM) handle0x8000() (uint16, error) {
+	x := (v.opc & 0x0F00) >> 8
+	y := (v.opc & 0x00F0) >> 4
+
 	switch v.opc & 0x000F {
 	case 0x0000:
-		return v.setVxVy()
+		return v.setVxVy(x, y)()
+
+	case 0x0001:
+		return v.setVxVxOrVy(x, y)()
 
 	case 0x0002:
-		return v.setVxAndVy()
+		return v.setVxAndVy(x, y)()
+
+	case 0x0003:
+		return v.setVxVxXOrVy(x, y)()
 
 	case 0x0004:
-		return v.incVxVy()
+		return v.incVxVy(x, y)()
 
 	case 0x0005:
-		return v.decVxVy()
+		return v.decVxVy(x, y)()
+
+	case 0x0006:
+		return v.setVFLeastVx(x, y)()
+
+	case 0x0007:
+		return v.setVxVyMinusVx(x, y)()
+
+	case 0x000E:
+		return v.setVFMostVx(x, y)()
 
 	default:
 		return v.opc & 0xFFFF, errors.New("TODO: handle0x8000")
@@ -242,55 +282,120 @@ func (v *VM) handle0x8000() (uint16, error) {
 }
 
 // setVxVy sets VX to the value of VY.
-func (v *VM) setVxVy() (uint16, error) {
-	v.v[(v.opc&0x0F00)>>8] = v.v[(v.opc&0x00F0)>>4]
-	v.pc += 2
+func (v *VM) setVxVy(x, y uint16) opcodeHandlerFunc {
+	return func() (uint16, error) {
+		v.v[x] = v.v[y]
+		v.pc += 2
 
-	return v.opc & 0xFFFF, nil
+		return v.opc & 0xFFFF, nil
+	}
+}
+
+// setVxVxOrVy sets VX to VX or VY (bitwise OR operation).
+func (v *VM) setVxVxOrVy(x, y uint16) opcodeHandlerFunc {
+	return func() (uint16, error) {
+		v.v[x] |= v.v[y]
+		v.pc += 2
+
+		return v.opc & 0xFFFF, nil
+	}
 }
 
 // setVxAndVy sets VX to VX & VY (bitwise AND operation).
-func (v *VM) setVxAndVy() (uint16, error) {
-	v.v[(v.opc&0x0F00)>>8] &= v.v[(v.opc&0x00F0)>>4]
-	v.pc += 2
+func (v *VM) setVxAndVy(x, y uint16) opcodeHandlerFunc {
+	return func() (uint16, error) {
+		v.v[x] &= v.v[y]
+		v.pc += 2
 
-	return v.opc & 0xFFFF, nil
+		return v.opc & 0xFFFF, nil
+	}
+}
+
+// setVxVxOrVy sets VX to VX xor VY (bitwise XOR operation).
+func (v *VM) setVxVxXOrVy(x, y uint16) opcodeHandlerFunc {
+	return func() (uint16, error) {
+		v.v[x] ^= v.v[y]
+		v.pc += 2
+
+		return v.opc & 0xFFFF, nil
+	}
 }
 
 // incVxVy adds VY to VX. VF is set to 1 when there's a carry, and to 0 when
 // there isn't.
-func (v *VM) incVxVy() (uint16, error) {
-	x := (v.opc & 0x0F00) >> 8
-	y := (v.opc & 0x00F0) >> 4
+func (v *VM) incVxVy(x, y uint16) opcodeHandlerFunc {
+	return func() (uint16, error) {
+		if v.v[y] > (0xFF - v.v[x]) {
+			v.v[0xF] = 1
+		} else {
+			v.v[0xF] = 0
+		}
+		v.v[x] += v.v[y]
 
-	if v.v[y] > (0xFF - v.v[x]) {
-		v.v[0xF] = 1
-	} else {
-		v.v[0xF] = 0
+		v.pc += 2
+
+		return v.opc & 0xFFFF, nil
 	}
-	v.v[x] += v.v[y]
-
-	v.pc += 2
-
-	return v.opc & 0xFFFF, nil
 }
 
 // decVxVy VY is subtracted from VX. VF is set to 0 when there's a borrow, and 1
 // when there isn't.
-func (v *VM) decVxVy() (uint16, error) {
-	x := (v.opc & 0x0F00) >> 8
-	y := (v.opc & 0x00F0) >> 4
+func (v *VM) decVxVy(x, y uint16) opcodeHandlerFunc {
+	return func() (uint16, error) {
+		if v.v[y] > v.v[x] {
+			v.v[0xF] = 0
+		} else {
+			v.v[0xF] = 1
+		}
+		v.v[x] -= v.v[y]
 
-	if v.v[y] > v.v[x] {
-		v.v[0xF] = 0
-	} else {
-		v.v[0xF] = 1
+		v.pc += 2
+
+		return v.opc & 0xFFFF, nil
 	}
-	v.v[x] -= v.v[y]
+}
 
-	v.pc += 2
+// setVFLeastVx stores the least significant bit of VX in VF and then shifts VX
+// to the right by 1.
+func (v *VM) setVFLeastVx(x, y uint16) opcodeHandlerFunc {
+	return func() (uint16, error) {
+		v.v[0xF] = v.v[x] & 1
+		v.v[x] >>= 1
 
-	return v.opc & 0xFFFF, nil
+		v.pc += 2
+
+		return v.opc & 0xFFFF, nil
+	}
+}
+
+// setVxVyMinusVx sets VX to VY minus VX. VF is set to 0 when there's a borrow,
+// and 1 when there isn't.
+func (v *VM) setVxVyMinusVx(x, y uint16) opcodeHandlerFunc {
+	return func() (uint16, error) {
+		v.v[x] = v.v[x] - v.v[y]
+		if v.v[x] > v.v[y] {
+			v.v[0xF] = 0
+		} else {
+			v.v[0xF] = 1
+		}
+
+		v.pc += 2
+
+		return v.opc & 0xFFFF, nil
+	}
+}
+
+// setVFMostVx stores the most significant bit of VX in VF and then shifts VX
+// to the left by 1.
+func (v *VM) setVFMostVx(x, y uint16) opcodeHandlerFunc {
+	return func() (uint16, error) {
+		v.v[0xF] = v.v[x] & 7
+		v.v[x] <<= 1
+
+		v.pc += 2
+
+		return v.opc & 0xFFFF, nil
+	}
 }
 
 // skipVxNotVy skips the next instruction if VX doesn't equal VY. Usually the
@@ -348,7 +453,7 @@ func (v *VM) draw() (uint16, error) {
 		pixel = uint16(v.mem[v.i+cY])
 		for cX := uint16(0); cX < 8; cX++ {
 			index := x + cX + ((y + cY) * 64)
-			if pixel&(0x80>>cX) == 0 {
+			if pixel&(0x80>>cX) == 0 || index >= uint16(len(v.disp)) {
 				continue
 			}
 
@@ -373,6 +478,8 @@ func (v *VM) draw() (uint16, error) {
 // action. Codes in this range cannot rely on the first 4 bits.
 func (v *VM) handle0xE000() (uint16, error) {
 	switch v.opc & 0x00FF {
+	case 0x009E:
+		return v.skipVxKeyPressed()
 	case 0x00A1:
 		return v.skipVxKeyNotPressed()
 	default:
@@ -380,16 +487,36 @@ func (v *VM) handle0xE000() (uint16, error) {
 	}
 }
 
-// skipVxKeyNotPressed the next instruction if the key stored in VX isn't
-// pressed (usually the next instruction is a jump to skip a code block).
-func (v *VM) skipVxKeyNotPressed() (uint16, error) {
+// skipVxKeyPressed skips the next instruction if the key stored in VX is
+// pressed. Usually the next instruction is a jump to skip a code block.
+func (v *VM) skipVxKeyPressed() (uint16, error) {
 	x := (v.opc & 0x0F00) >> 8
+	k := v.v[x]
 
 	// Skip the next instruction by increasing the program counter by 4
 	// instead of the usual 2.
-	if v.key[v.v[x]] == 0 {
+	if v.keys[k] == 1 {
+		v.keys[k] = 0
+		v.pc += 2
+	} else {
+		v.pc += 4
+	}
+
+	return v.opc & 0xFFFF, nil
+}
+
+// skipVxKeyNotPressed skips the next instruction if the key stored in VX isn't
+// pressed. Usually the next instruction is a jump to skip a code block.
+func (v *VM) skipVxKeyNotPressed() (uint16, error) {
+	x := (v.opc & 0x0F00) >> 8
+	k := v.v[x]
+
+	// Skip the next instruction by increasing the program counter by 4
+	// instead of the usual 2.
+	if v.keys[k] == 0 {
 		v.pc += 4
 	} else {
+		v.keys[k] = 0
 		v.pc += 2
 	}
 
@@ -403,11 +530,15 @@ func (v *VM) handle0xF000() (uint16, error) {
 	case 0x0007:
 		return v.getDelayTimer()
 
+	// TODO: FX0A
+
 	case 0x0015:
 		return v.setDelayTimer()
 
 	case 0x0018:
 		return v.setSoundTimer()
+
+	// TODO: FX1E
 
 	case 0x0029:
 		return v.loadFont()
@@ -415,11 +546,13 @@ func (v *VM) handle0xF000() (uint16, error) {
 	case 0x0033:
 		return v.setBCD()
 
+	// TODO: FX55
+
 	case 0x0065:
 		return v.regLoad()
 
 	default:
-		return v.opc & 0xFFFF, errors.New("TODO: handle0xF000")
+		return v.opc & 0x00FF, errors.New("TODO: handle0xF000")
 	}
 }
 

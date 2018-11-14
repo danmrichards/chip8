@@ -19,6 +19,14 @@ var (
 	vm     *chip8.VM
 	window *pixelgl.Window
 
+	// TODO: Abstract this.
+	keys = map[uint16]pixelgl.Button{
+		0x1: pixelgl.Key1, 0x2: pixelgl.Key2, 0x3: pixelgl.Key3, 0xC: pixelgl.Key4,
+		0x4: pixelgl.KeyQ, 0x5: pixelgl.KeyW, 0x6: pixelgl.KeyE, 0xD: pixelgl.KeyR,
+		0x7: pixelgl.KeyA, 0x8: pixelgl.KeyS, 0x9: pixelgl.KeyD, 0xE: pixelgl.KeyF,
+		0xA: pixelgl.KeyZ, 0x0: pixelgl.KeyX, 0xB: pixelgl.KeyC, 0xF: pixelgl.KeyV,
+	}
+
 	rom   string
 	debug bool
 )
@@ -94,11 +102,11 @@ func run() {
 			log.Fatal(err)
 		}
 
+		inputHandler()
+
 		// A bit dirty, but block the next cycle until a tick. This prevents
 		// the emulator from running too quickly.
 		<-tick.C
-
-		// TODO: Store the key press state.
 	}
 }
 
@@ -116,6 +124,7 @@ func eventHandler() {
 	}
 }
 
+// TODO: Abstract this.
 func drawScreen() {
 	window.Clear(colornames.Black)
 
@@ -146,4 +155,12 @@ func drawScreen() {
 
 	imd.Draw(window)
 	window.Update()
+}
+
+func inputHandler() {
+	for i, key := range keys {
+		if window.Pressed(key) {
+			vm.KeyDown(i)
+		}
+	}
 }
