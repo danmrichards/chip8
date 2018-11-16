@@ -64,7 +64,10 @@ func (v *VM) registerHandlers() {
 			opcode:  "ANNN",
 			handler: v.setAddress,
 		},
-		// TODO: BNNN
+		0xB000: {
+			opcode:  "BNNN",
+			handler: v.jumpV0,
+		},
 		0xC000: {
 			opcode:  "CXNN",
 			handler: v.setVxRand,
@@ -359,8 +362,8 @@ func (v *VM) decVxVy(x, y uint16) opcodeHandlerFunc {
 // to the right by 1.
 func (v *VM) setVFLeastVx(x, y uint16) opcodeHandlerFunc {
 	return func() (uint16, error) {
-		v.v[0xF] = v.v[x] & 1
 		v.v[x] >>= 1
+		v.v[0xF] = v.v[x] & 1
 
 		v.pc += 2
 
@@ -389,8 +392,8 @@ func (v *VM) setVxVyMinusVx(x, y uint16) opcodeHandlerFunc {
 // to the left by 1.
 func (v *VM) setVFMostVx(x, y uint16) opcodeHandlerFunc {
 	return func() (uint16, error) {
-		v.v[0xF] = v.v[x] & 7
 		v.v[x] <<= 1
+		v.v[0xF] = v.v[x] & 7
 
 		v.pc += 2
 
@@ -419,6 +422,14 @@ func (v *VM) skipVxNotVy() (uint16, error) {
 func (v *VM) setAddress() (uint16, error) {
 	v.i = v.opc & 0x0FFF
 	v.pc += 2 // Increase by 2 because each instruction is 2 bytes long.
+
+	return v.opc, nil
+}
+
+// jumpV0 jumps to the address NNN plus V0.
+func (v *VM) jumpV0() (uint16, error) {
+	// Jump to NNN.
+	v.pc = uint16(v.v[0]) + v.opc&0x0FFF
 
 	return v.opc, nil
 }
@@ -497,9 +508,9 @@ func (v *VM) skipVxKeyPressed() (uint16, error) {
 	// instead of the usual 2.
 	if v.keys[k] == 1 {
 		v.keys[k] = 0
-		v.pc += 2
-	} else {
 		v.pc += 4
+	} else {
+		v.pc += 2
 	}
 
 	return v.opc & 0xFFFF, nil
@@ -530,7 +541,8 @@ func (v *VM) handle0xF000() (uint16, error) {
 	case 0x0007:
 		return v.getDelayTimer()
 
-	// TODO: FX0A
+	case 0x000A:
+		return v.getKey()
 
 	case 0x0015:
 		return v.setDelayTimer()
@@ -538,7 +550,8 @@ func (v *VM) handle0xF000() (uint16, error) {
 	case 0x0018:
 		return v.setSoundTimer()
 
-	// TODO: FX1E
+	case 0x001E:
+		return v.incIVx()
 
 	case 0x0029:
 		return v.loadFont()
@@ -546,7 +559,8 @@ func (v *VM) handle0xF000() (uint16, error) {
 	case 0x0033:
 		return v.setBCD()
 
-	// TODO: FX55
+	case 0x0055:
+		return v.regDump()
 
 	case 0x0065:
 		return v.regLoad()
@@ -556,10 +570,25 @@ func (v *VM) handle0xF000() (uint16, error) {
 	}
 }
 
-// getDelayTimer the delay timer to VX.
+// getDelayTimer sets the delay timer to VX.
 func (v *VM) getDelayTimer() (uint16, error) {
 	v.v[(v.opc&0x0F00)>>8] = v.delayTimer
 	v.pc += 2
+
+	return v.opc & 0xFFFF, nil
+}
+
+// getKey waits for a key press and then stores in VX. Blocking Operation. All
+// instruction halted until next key event.
+func (v *VM) getKey() (uint16, error) {
+	x := (v.opc & 0x0F00) >> 8
+	for i := range v.keys {
+		if v.keys[i] == 1 {
+			v.v[x] = v.keys[i]
+			v.pc += 2
+			break
+		}
+	}
 
 	return v.opc & 0xFFFF, nil
 }
@@ -575,6 +604,14 @@ func (v *VM) setDelayTimer() (uint16, error) {
 // setDelayTimer sets the sound timer to VX.
 func (v *VM) setSoundTimer() (uint16, error) {
 	v.soundTimer = v.v[(v.opc&0x0F00)>>8]
+	v.pc += 2
+
+	return v.opc & 0xFFFF, nil
+}
+
+// incIVx adds VX to I.
+func (v *VM) incIVx() (uint16, error) {
+	v.i += uint16(v.v[(v.opc&0x0F00)>>8])
 	v.pc += 2
 
 	return v.opc & 0xFFFF, nil
@@ -605,7 +642,19 @@ func (v *VM) setBCD() (uint16, error) {
 	return v.opc & 0xFFFF, nil
 }
 
-// fillV0Vx stores V0 to VX (including VX) in mem starting at address i. The
+// regDump stores V0 to VX (including VX) in memory starting at address i. The
+// offset from i is increased by 1 for each value written, but i itself is left
+// unmodified.
+func (v *VM) regDump() (uint16, error) {
+	for i := uint16(0); i <= (v.opc&0x0F00)>>8; i++ {
+		v.mem[v.i+i] = v.v[i]
+	}
+	v.pc += 2
+
+	return v.opc & 0xFFFF, nil
+}
+
+// regLoad stores V0 to VX (including VX) in mem starting at address i. The
 // offset from i is increased by 1 for each value written, but i itself is left
 // unmodified.
 func (v *VM) regLoad() (uint16, error) {

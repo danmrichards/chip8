@@ -20,7 +20,7 @@ var (
 	window *pixelgl.Window
 
 	// TODO: Abstract this.
-	keys = map[uint16]pixelgl.Button{
+	keys = map[byte]pixelgl.Button{
 		0x1: pixelgl.Key1, 0x2: pixelgl.Key2, 0x3: pixelgl.Key3, 0xC: pixelgl.Key4,
 		0x4: pixelgl.KeyQ, 0x5: pixelgl.KeyW, 0x6: pixelgl.KeyE, 0xD: pixelgl.KeyR,
 		0x7: pixelgl.KeyA, 0x8: pixelgl.KeyS, 0x9: pixelgl.KeyD, 0xE: pixelgl.KeyF,
@@ -72,8 +72,6 @@ func run() {
 	if err != nil {
 		log.Fatal("Could not create window:", err)
 	}
-
-	// TODO: Setup input.
 
 	vm = chip8.New()
 	vm.Debug = debug

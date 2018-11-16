@@ -129,7 +129,7 @@ func (v *VM) Beep() <-chan struct{} {
 }
 
 // KeyDown marks key as pressed.
-func (v *VM) KeyDown(key uint16) {
+func (v *VM) KeyDown(key byte) {
 	v.keys[key] = 1
 }
 
