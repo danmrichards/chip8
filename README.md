@@ -1,5 +1,5 @@
-# Chip8
-A [Chip8][1] emulator written in Go.
+# CHIP-8
+A [CHIP-8][1] emulator written in Go.
 
 Written as a learning exercise to get familiar with emulation, opcodes and CPUs.
 
