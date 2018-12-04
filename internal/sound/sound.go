@@ -25,7 +25,12 @@ func Beep() error {
 		return err
 	}
 
-	speaker.Init(format.SampleRate, format.SampleRate.N(time.Second/10))
+	if err = speaker.Init(
+		format.SampleRate,
+		format.SampleRate.N(time.Second/10),
+	); err != nil {
+		return err
+	}
 
 	done := make(chan struct{})
 	speaker.Play(beep.Seq(s, beep.Callback(func() {

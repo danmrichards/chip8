@@ -8,24 +8,13 @@ import (
 	"time"
 
 	"github.com/danmrichards/chip8/internal/chip8"
-	"github.com/danmrichards/chip8/internal/sound"
+	"github.com/danmrichards/chip8/internal/event"
 	"github.com/faiface/pixel"
-	"github.com/faiface/pixel/imdraw"
 	"github.com/faiface/pixel/pixelgl"
-	"golang.org/x/image/colornames"
 )
 
 var (
-	vm     *chip8.VM
-	window *pixelgl.Window
-
-	// TODO: Abstract this.
-	keys = map[byte]pixelgl.Button{
-		0x1: pixelgl.Key1, 0x2: pixelgl.Key2, 0x3: pixelgl.Key3, 0xC: pixelgl.Key4,
-		0x4: pixelgl.KeyQ, 0x5: pixelgl.KeyW, 0x6: pixelgl.KeyE, 0xD: pixelgl.KeyR,
-		0x7: pixelgl.KeyA, 0x8: pixelgl.KeyS, 0x9: pixelgl.KeyD, 0xE: pixelgl.KeyF,
-		0xA: pixelgl.KeyZ, 0x0: pixelgl.KeyX, 0xB: pixelgl.KeyC, 0xF: pixelgl.KeyV,
-	}
+	vm *chip8.VM
 
 	rom   string
 	debug bool
@@ -67,14 +56,15 @@ func run() {
 		VSync:  true,
 	}
 
-	var err error
-	window, err = pixelgl.NewWindow(cfg)
+	window, err := pixelgl.NewWindow(cfg)
 	if err != nil {
-		log.Fatal("Could not create window:", err)
+		log.Fatal("Could not create event:", err)
 	}
 
 	vm = chip8.New()
 	vm.Debug = debug
+
+	eh := event.NewHandler(window, vm)
 
 	rom, err := os.Open(rom)
 	if err != nil {
@@ -85,7 +75,8 @@ func run() {
 		log.Fatal("Could not load ROM:", err)
 	}
 
-	go eventHandler()
+	// Handle input, screen and sound events.
+	go eh.Handle()
 
 	// Emulation loop.
 	for !window.Closed() {
@@ -100,65 +91,8 @@ func run() {
 			log.Fatal(err)
 		}
 
-		inputHandler()
-
 		// A bit dirty, but block the next cycle until a tick. This prevents
 		// the emulator from running too quickly.
 		<-tick.C
-	}
-}
-
-func eventHandler() {
-	for !window.Closed() {
-		select {
-		case <-vm.Draw():
-			drawScreen()
-		case <-vm.Beep():
-			if err := sound.Beep(); err != nil {
-				log.Printf("Error playing beep: %q\n", err)
-			}
-		default:
-		}
-	}
-}
-
-// TODO: Abstract this.
-func drawScreen() {
-	window.Clear(colornames.Black)
-
-	imd := imdraw.New(nil)
-	imd.Color = pixel.RGB(0.14, 0.8, 0.26)
-
-	scrW := window.Bounds().W()
-	scrH := window.Bounds().H()
-
-	// Calculate the screen ratio.
-	rW, rH := scrW/64, scrH/32
-
-	for x := 0; x < 64; x++ {
-		for y := 0; y < 32; y++ {
-			if !vm.PixelSet((31-y)*64 + x) {
-				continue
-			}
-
-			// Scale the pixel co-ords.
-			sX := rW * float64(x)
-			sY := rH * float64(y)
-
-			imd.Push(pixel.V(sX, sY))
-			imd.Push(pixel.V(sX+rW, sY+rH))
-			imd.Rectangle(0)
-		}
-	}
-
-	imd.Draw(window)
-	window.Update()
-}
-
-func inputHandler() {
-	for i, key := range keys {
-		if window.Pressed(key) {
-			vm.KeyDown(i)
-		}
 	}
 }

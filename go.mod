@@ -11,4 +11,5 @@ require (
 	github.com/gobuffalo/packr v1.19.0
 	github.com/hajimehoshi/oto v0.2.1 // indirect
 	golang.org/x/image v0.0.0-20181109232246-249dc8530c0e
+	golang.org/x/tools v0.0.0-20181204185109-3832e276fb48 // indirect
 )
